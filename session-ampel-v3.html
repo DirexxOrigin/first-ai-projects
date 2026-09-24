@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Session Traffic Light v3</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --ink:#e8e9ec; --sub:#8b909c; --line:#262b35;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  html{height:100%; scroll-padding-top:env(safe-area-inset-top,0px);}
+  body{
+    height:100%; margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    display:flex; justify-content:center;
+  }
+  main{width:100%; max-width:520px; padding:2rem 1.25rem 3rem;}
+  h1{font-size:1.4rem; font-weight:600; margin:0 0 .3rem;}
+  p.lead{color:var(--sub); font-size:.9rem; line-height:1.5; margin:0 0 1.3rem;}
+  .tabs{display:flex; gap:.4rem; margin-bottom:1rem; flex-wrap:wrap;}
+  .tab{
+    padding:.45rem .8rem; border-radius:20px; border:1px solid var(--line);
+    background:#1e222b; color:var(--sub); font-size:.82rem; cursor:pointer;
+  }
+  .tab.active{color:var(--ink); border-color:#3ecf8e; background:#1c2a24;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1.3rem; margin-bottom:1rem;}
+  .row{display:flex; align-items:center; gap:.9rem;}
+  .dot{width:16px; height:16px; border-radius:50%; flex-shrink:0;}
+  .g{background:#3ecf8e; box-shadow:0 0 12px #3ecf8e88;}
+  .y{background:#e8c547; box-shadow:0 0 12px #e8c54788;}
+  .r{background:#e2574c; box-shadow:0 0 12px #e2574c88;}
+  .n{background:#4a4f5a;}
+  .label{font-size:1.05rem; font-weight:600;}
+  .sub{color:var(--sub); font-size:.85rem; margin-top:.15rem;}
+  .badge{
+    display:inline-block; font-size:.7rem; padding:.15rem .5rem; border-radius:6px;
+    margin-left:.5rem; vertical-align:middle; font-weight:600;
+  }
+  .badge.confirmed{background:#1c3a2c; color:#3ecf8e;}
+  .badge.anecdotal{background:#3a3320; color:#e8c547;}
+  .badge.na{background:#2a2d34; color:#8b909c;}
+  .clock{font-size:.78rem; color:var(--sub); margin-top:.7rem; border-top:1px solid var(--line); padding-top:.7rem;}
+  .counter{display:flex; justify-content:space-between; align-items:center;}
+  .num{font-size:2.1rem; font-weight:700; font-variant-numeric:tabular-nums;}
+  .btns{display:flex; gap:.5rem;}
+  button{
+    padding:.55rem .9rem; border-radius:8px; border:1px solid var(--line);
+    background:#1e222b; color:var(--ink); font-size:.85rem; cursor:pointer;
+  }
+  button:hover{border-color:#3ecf8e;}
+  .disclaimer{
+    font-size:.78rem; color:var(--sub); line-height:1.6; border-left:2px solid var(--line);
+    padding-left:.8rem; margin-top:1.6rem;
+  }
+  .disclaimer strong{color:var(--ink);}
+</style>
+</head>
+<body>
+<main>
+  <h1>Session Traffic Light v3</h1>
+  <p class="lead">A rough rule of thumb for conversation length and time of day — not a real measurement. Pick your AI below.</p>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="card">
+    <div class="row">
+      <div class="dot" id="trafficDot"></div>
+      <div>
+        <div class="label" id="trafficLabel">–<span class="badge" id="trafficBadge"></span></div>
+        <div class="sub" id="trafficSub">–</div>
+      </div>
+    </div>
+    <div class="clock" id="clockLine">–</div>
+  </div>
+
+  <div class="card">
+    <div class="counter">
+      <div>
+        <div class="label">Usage score this session</div>
+        <div class="sub">Rough weighting — long replies count more than short ones (short=2, long=8, arbitrary but consistent)</div>
+      </div>
+      <div class="num" id="count">0</div>
+    </div>
+    <div class="btns" style="margin-top:1rem; flex-wrap:wrap;">
+      <button id="incShort">+ Short (1–2 sentences, quick fact or yes/no)</button>
+      <button id="incLong">+ Long (multiple paragraphs, code, or a tool was used — search, artifact, file)</button>
+      <button id="reset">Reset</button>
+    </div>
+    <div class="sub" style="margin-top:.6rem;">Rule of thumb: if the reply took more than ~15 seconds to read, or the AI visibly searched / built something, count it as long. This score is the same regardless of which AI you picked above.</div>
+    <div class="sub" id="lenNote" style="margin-top:.8rem;"></div>
+    <div class="sub" id="idleNote" style="margin-top:.4rem;"></div>
+  </div>
+
+  <div class="card" id="newChatCard" style="display:none; border-color:#e8c547;">
+    <div class="row">
+      <div class="dot y"></div>
+      <div>
+        <div class="label">Good moment for a fresh chat window</div>
+        <div class="sub">Long conversations get "costlier" per message, since the whole prior history is re-read each time. Starting a new topic in a fresh chat noticeably reduces that. You don't need to delete the old window — keeping it does no harm, it's just no longer actively re-read.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer" id="sourceNote"></div>
+</main>
+
+<script>
+  // Per-provider config. "confidence" controls the badge and disclaimer tone.
+  const PROVIDERS = {
+    claude: {
+      name: 'Claude (Anthropic)',
+      confidence: 'confirmed',
+      evaluate(now){
+        const utcH = now.getUTCHours(), utcDay = now.getUTCDay();
+        const isWeekday = utcDay >= 1 && utcDay <= 5;
+        const inPeak = isWeekday && utcH >= 13 && utcH < 19;
+        if(inPeak) return {dot:'r', label:'Confirmed peak time', sub:'Anthropic has officially confirmed that 5-hour session limits get used up faster on weekdays 13:00–19:00 GMT — that window is active right now, in your local time.'};
+        if(isWeekday) return {dot:'g', label:'Outside the confirmed peak window', sub:'No official indication of faster usage at this hour — but also no guarantee of "extra generous" capacity.'};
+        return {dot:'g', label:'Weekend — no confirmed rule', sub:'The known peak-time rule only applies to weekdays, per Anthropic.'};
+      },
+      source: 'Anthropic confirmed on March 26, 2026 (via a post by staff member Thariq Shihipar, not an official in-app announcement) that 5-hour session limits for Free/Pro/Max users get used up faster on weekdays 13:00–19:00 GMT. Weekly limits are unaffected. This is a specific, named policy — not a general "servers are busier" observation.'
+    },
+    chatgpt: {
+      name: 'ChatGPT (OpenAI)',
+      confidence: 'anecdotal',
+      evaluate(now){
+        const h = now.getHours(), day = now.getDay();
+        const isWeekday = day >= 1 && day <= 5;
+        const busy = isWeekday && h >= 9 && h < 17;
+        if(busy) return {dot:'y', label:'Possibly busier (unconfirmed)', sub:'No official time-based policy has been confirmed by OpenAI. This just reflects ordinary weekday daytime hours, where anecdotal "at capacity" reports cluster.'};
+        return {dot:'g', label:'Likely quieter (unconfirmed)', sub:'Outside typical weekday daytime hours — but again, this is a guess based on user reports, not a confirmed rule.'};
+      },
+      source: 'No official OpenAI statement defines specific peak hours for ChatGPT. User reports mention capacity issues roughly during daytime hours, but this is anecdotal and not anchored to a specific, confirmed time window the way Anthropic\'s is.'
+    },
+    gemini: {
+      name: 'Gemini (Google)',
+      confidence: 'na',
+      evaluate(){
+        return {dot:'n', label:'No time-of-day concept', sub:'Google\'s documented rate limits are based on requests/tokens per minute or day, not time of day. There is nothing here for a "peak hours" indicator to show.'};
+      },
+      source: 'Google\'s Gemini API documentation defines limits purely by request/token quotas (RPM, TPM, RPD), with no publicly documented time-of-day peak-hour policy. A traffic-light for "time of day" doesn\'t map onto how this system actually works.'
+    },
+    meta: {
+      name: 'Meta AI',
+      confidence: 'na',
+      evaluate(){
+        return {dot:'n', label:'No reliable data found', sub:'No official policy or consistent user-reported time pattern could be found for Meta AI. This indicator has nothing solid to go on.'};
+      },
+      source: 'Research turned up only generic outage reports for Meta AI, with no discernible time-of-day pattern and no official statement about peak-hour throttling.'
+    }
+  };
+
+  const BADGE_TEXT = {confirmed:'CONFIRMED', anecdotal:'UNCONFIRMED', na:'N/A'};
+  let current = 'claude';
+
+  function renderTabs(){
+    const tabs = document.getElementById('tabs');
+    tabs.innerHTML = '';
+    Object.keys(PROVIDERS).forEach(key => {
+      const b = document.createElement('button');
+      b.className = 'tab' + (key === current ? ' active' : '');
+      b.textContent = PROVIDERS[key].name;
+      b.addEventListener('click', () => { current = key; renderTabs(); updateTraffic(); });
+      tabs.appendChild(b);
+    });
+  }
+
+  function updateTraffic(){
+    const now = new Date();
+    const p = PROVIDERS[current];
+    const result = p.evaluate(now);
+    const dot = document.getElementById('trafficDot');
+    const label = document.getElementById('trafficLabel');
+    const sub = document.getElementById('trafficSub');
+    const badge = document.getElementById('trafficBadge');
+    const clockLine = document.getElementById('clockLine');
+    const sourceNote = document.getElementById('sourceNote');
+
+    dot.className = 'dot ' + result.dot;
+    label.childNodes[0].nodeValue = result.label;
+    sub.textContent = result.sub;
+    badge.textContent = BADGE_TEXT[p.confidence];
+    badge.className = 'badge ' + p.confidence;
+
+    const localStr = now.toLocaleString(undefined, { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+    const tzOffset = -now.getTimezoneOffset() / 60;
+    const tzStr = 'UTC' + (tzOffset >= 0 ? '+' : '') + tzOffset;
+    clockLine.textContent = 'Your local time: ' + localStr + ' (' + tzStr + ') — showing status for ' + p.name + '.';
+
+    sourceNote.innerHTML = '<strong>Source (' + p.name + '):</strong> ' + p.source + ' This page has no access to your actual remaining quota, real server load, or latency data for any provider — it only shows what is or isn\'t publicly known.';
+  }
+
+  const KEY = 'session_ampel_count';
+  const LAST_KEY = 'session_ampel_last_click';
+  let count = 0;
+  let lastClick = Date.now();
+  try { count = parseInt(localStorage.getItem(KEY) || '0', 10) || 0; } catch(e){}
+  try { lastClick = parseInt(localStorage.getItem(LAST_KEY) || String(Date.now()), 10); } catch(e){}
+  const countEl = document.getElementById('count');
+  const lenNote = document.getElementById('lenNote');
+  const idleNote = document.getElementById('idleNote');
+
+  function renderCount(){
+    countEl.textContent = count;
+    const newChatCard = document.getElementById('newChatCard');
+    if(count < 20){ lenNote.textContent = 'Still manageable.'; newChatCard.style.display = 'none'; }
+    else if(count < 60){ lenNote.textContent = 'Getting to be a longer conversation — every message re-reads the whole history so far.'; newChatCard.style.display = 'none'; }
+    else { lenNote.textContent = 'Very high score — a fresh chat for a new topic will noticeably help.'; newChatCard.style.display = 'block'; }
+  }
+
+  function renderIdle(){
+    const minutes = Math.round((Date.now() - lastClick) / 60000);
+    idleNote.textContent = minutes >= 15 ? ("It's been " + minutes + " min since you last logged an exchange — the score may be understating actual usage.") : '';
+  }
+
+  function logClick(delta){
+    count += delta; lastClick = Date.now();
+    try { localStorage.setItem(KEY, String(count)); localStorage.setItem(LAST_KEY, String(lastClick)); } catch(e){}
+    renderCount(); renderIdle();
+  }
+
+  document.getElementById('incShort').addEventListener('click', () => logClick(2));
+  document.getElementById('incLong').addEventListener('click', () => logClick(8));
+  document.getElementById('reset').addEventListener('click', () => {
+    count = 0; lastClick = Date.now();
+    try { localStorage.setItem(KEY, '0'); localStorage.setItem(LAST_KEY, String(lastClick)); } catch(e){}
+    renderCount(); renderIdle();
+  });
+
+  renderTabs();
+  updateTraffic();
+  renderCount();
+  renderIdle();
+  setInterval(updateTraffic, 60000);
+  setInterval(renderIdle, 60000);
+</script>
+</body>
+</html>
