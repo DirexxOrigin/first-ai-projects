@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gedankensammler</title>
+<style>
+  :root{
+    --bg:#faf7f2; --ink:#2b2622; --sub:#7a7167; --line:#e4ddd2;
+    --accent:#5b7a6e; --accent-ink:#f4f1ea;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1c1a17; --ink:#eee8de; --sub:#a79d8e; --line:#332f29;
+      --accent:#7fa192; --accent-ink:#14201b;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1c1a17; --ink:#eee8de; --sub:#a79d8e; --line:#332f29;
+    --accent:#7fa192; --accent-ink:#14201b;
+  }
+  html{scroll-padding-top:env(safe-area-inset-top,0px); height:100%;}
+  body{
+    height:100%; margin:0; background:var(--bg); color:var(--ink);
+    font-family:Georgia,'Iowan Old Style',serif;
+    display:flex; justify-content:center;
+  }
+  main{width:100%; max-width:560px; padding:2.5rem 1.5rem 3rem;}
+  h1{
+    font-size:1.7rem; font-weight:400; margin:0 0 .3rem;
+    letter-spacing:-.01em;
+  }
+  p.lead{color:var(--sub); font-size:.95rem; margin:0 0 1.8rem; line-height:1.5; max-width:44ch;}
+  form{display:flex; gap:.5rem; margin-bottom:2rem;}
+  input{
+    flex:1; padding:.7rem .9rem; border:1px solid var(--line); border-radius:8px;
+    background:transparent; color:var(--ink); font-family:inherit; font-size:1rem;
+  }
+  input:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  button{
+    padding:.7rem 1.1rem; border:none; border-radius:8px; background:var(--accent);
+    color:var(--accent-ink); font-family:inherit; font-size:.95rem; cursor:pointer;
+  }
+  button:active{transform:translateY(1px);}
+  ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.6rem;}
+  li{
+    border:1px solid var(--line); border-radius:10px; padding:.8rem 1rem;
+    display:flex; justify-content:space-between; align-items:flex-start; gap:.8rem;
+    animation:in .25s ease;
+  }
+  @keyframes in{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);}}
+  li .txt{line-height:1.4;}
+  li .time{color:var(--sub); font-size:.75rem; white-space:nowrap; margin-top:.15rem;}
+  .empty{color:var(--sub); font-size:.9rem; font-style:italic;}
+  .count{color:var(--sub); font-size:.8rem; margin-top:1.6rem;}
+  #summarize{
+    padding:.8rem 1rem; border:1px solid var(--accent); border-radius:10px;
+    background:transparent; color:var(--accent); font-family:inherit; font-size:.95rem; cursor:pointer;
+  }
+  #summarize:hover{background:var(--accent); color:var(--accent-ink);}
+  #summarize:disabled{opacity:.5; cursor:default; background:transparent; color:var(--accent);}
+  #summary{margin-top:1rem; line-height:1.6; font-size:1rem;}
+  #summary .box{
+    border-left:3px solid var(--accent); padding:.2rem 0 .2rem 1rem; animation:in .3s ease;
+  }
+  #summary .err{color:#b5654f; font-size:.9rem; font-style:italic;}
+</style>
+</head>
+<body>
+<main>
+  <h1>Gedankensammler</h1>
+  <p class="lead">Wirf hier lose Fragmente rein, auch wenn sie noch zu nichts zu gehören scheinen. Später schaut man gemeinsam, was sich zusammenfügt.</p>
+
+  <form id="f">
+    <input id="in" type="text" placeholder="Ein Gedanke, ein Wort, ein Fetzen …" autocomplete="off">
+    <button type="submit">Ablegen</button>
+  </form>
+
+  <div id="list"><p class="empty">Noch nichts hier. Fang an.</p></div>
+  <p class="count" id="count"></p>
+  <button id="reset" style="background:none;border:none;color:var(--sub);font-size:.8rem;text-decoration:underline;cursor:pointer;padding:0;margin-top:.4rem;display:none;">Alles löschen und neu anfangen</button>
+
+  <button id="summarize" style="margin-top:1.2rem; display:none; width:100%;">Was hat mich heute wirklich beschäftigt?</button>
+  <div id="summary"></div>
+</main>
+
+<script>
+  const STORAGE_KEY = 'gedankensammler_thoughts_v1';
+  let thoughts = [];
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) thoughts = JSON.parse(saved);
+  } catch (e) { /* Speicher nicht verfügbar, wir starten einfach leer */ }
+
+  function save(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(thoughts)); }
+    catch (e) { /* kein Speicherzugriff, Sitzung läuft trotzdem weiter */ }
+  }
+  const form = document.getElementById('f');
+  const input = document.getElementById('in');
+  const list = document.getElementById('list');
+  const count = document.getElementById('count');
+
+  const sumBtn = document.getElementById('summarize');
+  const sumBox = document.getElementById('summary');
+  const resetBtn = document.getElementById('reset');
+
+  function render(){
+    if(thoughts.length === 0){
+      list.innerHTML = '<p class="empty">Noch nichts hier. Fang an.</p>';
+      count.textContent = '';
+      sumBtn.style.display = 'none';
+      return;
+    }
+    list.innerHTML = '<ul>' + thoughts.slice().reverse().map(t =>
+      `<li><span class="txt">${t.text}</span><span class="time">${t.time}</span></li>`
+    ).join('') + '</ul>';
+    count.textContent = thoughts.length + (thoughts.length === 1 ? ' Gedanke gesammelt' : ' Gedanken gesammelt');
+    sumBtn.style.display = thoughts.length >= 2 ? 'block' : 'none';
+    resetBtn.style.display = thoughts.length > 0 ? 'inline' : 'none';
+  }
+
+  resetBtn.addEventListener('click', () => {
+    if(!confirm('Wirklich alle gesammelten Gedanken löschen?')) return;
+    thoughts.length = 0;
+    save();
+    sumBox.innerHTML = '';
+    render();
+  });
+
+  sumBtn.addEventListener('click', async () => {
+    sumBtn.disabled = true;
+    sumBtn.textContent = 'Ich schaue mir das an …';
+    sumBox.innerHTML = '';
+    try{
+      const list = thoughts.map((t,i) => (i+1) + '. ' + t.text).join('\n');
+      const prompt = 'Hier sind lose Gedankenfragmente, die eine Person nacheinander notiert hat, ohne Plan oder Ordnung, teils gebündelt, teils über einen längeren Zeitraum verteilt:\n\n' + list +
+        '\n\nSchau ehrlich hin, was wirklich da ist, statt etwas hineinzudeuten:' +
+        '\n- Wenn sich ein klarer roter Faden zeigt: benenne ihn in ein bis drei kurzen Sätzen.' +
+        '\n- Wenn sich zwei oder drei unterschiedliche Themen zeigen, ohne dass eins dominiert: sag das offen und benenne sie kurz nebeneinander, statt eins künstlich als "den" Faden auszugeben.' +
+        '\n- Wenn die Fragmente zu wenige, zu vage oder zu unzusammenhängend sind, um ehrlich etwas herauszulesen: sag das ebenfalls offen, statt etwas zu erfinden.' +
+        '\nSprich die Person direkt an, auf Deutsch, warm und undramatisch. Keine Aufzählung der einzelnen Fragmente, keine Wiederholung, keine erfundenen Zusammenhänge.';
+
+      const sample = await claude.use("sample");
+      if(!sample){
+        sumBox.innerHTML = '<p class="err">Diese Funktion ist hier gerade nicht verfügbar.</p>';
+        return;
+      }
+      const result = await sample(prompt);
+      const text = (result && result.text) ? result.text.trim() : '';
+      sumBox.innerHTML = text
+        ? '<div class="box">' + text.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) + '</div>'
+        : '<p class="err">Konnte gerade keinen roten Faden finden. Versuch es nochmal.</p>';
+    } catch(err){
+      sumBox.innerHTML = '<p class="err">Das hat gerade nicht geklappt: ' +
+        String(err.message || err).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) + '</p>';
+    } finally {
+      sumBtn.disabled = false;
+      sumBtn.textContent = 'Was hat mich heute wirklich beschäftigt?';
+    }
+  });
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const val = input.value.trim();
+    if(!val) return;
+    const esc = val.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    thoughts.push({text: esc, time: new Date().toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})});
+    save();
+    input.value = '';
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>

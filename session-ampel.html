@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Session-Ampel</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --ink:#e8e9ec; --sub:#8b909c; --line:#262b35;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  html{height:100%; scroll-padding-top:env(safe-area-inset-top,0px);}
+  body{
+    height:100%; margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    display:flex; justify-content:center;
+  }
+  main{width:100%; max-width:520px; padding:2rem 1.25rem 3rem;}
+  h1{font-size:1.4rem; font-weight:600; margin:0 0 .3rem;}
+  p.lead{color:var(--sub); font-size:.9rem; line-height:1.5; margin:0 0 1.5rem;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1.3rem; margin-bottom:1rem;}
+  .row{display:flex; align-items:center; gap:.9rem;}
+  .dot{width:16px; height:16px; border-radius:50%; flex-shrink:0;}
+  .g{background:#3ecf8e; box-shadow:0 0 12px #3ecf8e88;}
+  .y{background:#e8c547; box-shadow:0 0 12px #e8c54788;}
+  .r{background:#e2574c; box-shadow:0 0 12px #e2574c88;}
+  .label{font-size:1.05rem; font-weight:600;}
+  .sub{color:var(--sub); font-size:.85rem; margin-top:.15rem;}
+  .counter{display:flex; justify-content:space-between; align-items:center;}
+  .num{font-size:2.1rem; font-weight:700; font-variant-numeric:tabular-nums;}
+  .btns{display:flex; gap:.5rem;}
+  button{
+    padding:.55rem .9rem; border-radius:8px; border:1px solid var(--line);
+    background:#1e222b; color:var(--ink); font-size:.85rem; cursor:pointer;
+  }
+  button:hover{border-color:#3ecf8e;}
+  .disclaimer{
+    font-size:.78rem; color:var(--sub); line-height:1.6; border-left:2px solid var(--line);
+    padding-left:.8rem; margin-top:1.6rem;
+  }
+  .disclaimer strong{color:var(--ink);}
+</style>
+</head>
+<body>
+<main>
+  <h1>Session-Ampel</h1>
+  <p class="lead">Eine grobe Faustregel für Gesprächslänge und Tageszeit — keine echte Messung.</p>
+
+  <div class="card">
+    <div class="row">
+      <div class="dot" id="trafficDot"></div>
+      <div>
+        <div class="label" id="trafficLabel">–</div>
+        <div class="sub" id="trafficSub">–</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="counter">
+      <div>
+        <div class="label">Verbrauchs-Score dieser Session</div>
+        <div class="sub">Grobe Gewichtung — lange Antworten zählen mehr als kurze</div>
+      </div>
+      <div class="num" id="count">0</div>
+    </div>
+    <div class="btns" style="margin-top:1rem; flex-wrap:wrap;">
+      <button id="incShort">+ Kurzer Austausch</button>
+      <button id="incLong">+ Lange Antwort (wie diese hier)</button>
+      <button id="reset">Zurücksetzen</button>
+    </div>
+    <div class="sub" id="lenNote" style="margin-top:.8rem;"></div>
+  </div>
+
+  <div class="card" id="newChatCard" style="display:none; border-color:#e8c547;">
+    <div class="row">
+      <div class="dot y"></div>
+      <div>
+        <div class="label">Guter Moment für ein neues Chatfenster</div>
+        <div class="sub">Lange Verläufe werden pro Nachricht "teurer", weil der ganze bisherige Text mitgelesen wird. Ein neues Thema in einem frischen Chat zu starten, entlastet spürbar. Das alte Fenster musst du dafür nicht löschen — behalten schadet nicht, es wird nur nicht mehr aktiv mitgelesen.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    <strong>Quelle:</strong> Anthropic hat am 26. März 2026 (über einen Post von Mitarbeiter Thariq Shihipar, keine offizielle Ankündigung im Interface) bestätigt, dass die 5-Stunden-Sitzungslimits für Free-/Pro-/Max-Nutzer werktags zwischen 13–19 Uhr GMT schneller aufgebraucht werden. Die wöchentlichen Limits bleiben davon unberührt. Für alle anderen Zeiten gibt es <strong>keine</strong> offizielle Bestätigung, dass mehr oder weniger Kapazität zur Verfügung steht — "Grün" bedeutet hier nur "keine bekannte Einschränkung", nicht "garantiert schnell oder großzügig". Diese Seite hat weiterhin keinen Zugriff auf dein tatsächliches Restkontingent, echte Serverlast oder Latenzdaten — sie zeigt nur, ob gerade das bestätigte Spitzenfenster läuft. Die Nachrichtenzählung ist rein manuell und der Score eine grobe Faustzahl (kurz=2, lang=8) — keine echte Token-Messung.
+  </div>
+</main>
+
+<script>
+  function updateTraffic(){
+    const now = new Date();
+    const h = now.getHours();
+    const day = now.getDay(); // 0 = So, 6 = Sa
+    const dot = document.getElementById('trafficDot');
+    const label = document.getElementById('trafficLabel');
+    const sub = document.getElementById('trafficSub');
+    dot.className = 'dot';
+
+    const isWeekday = day >= 1 && day <= 5;
+    const inPeakWindow = isWeekday && h >= 15 && h < 21; // 13-19 GMT ≈ 15-21 MESZ
+
+    if(inPeakWindow){
+      dot.classList.add('r');
+      label.textContent = 'Bestätigte Spitzenzeit';
+      sub.textContent = 'Anthropic hat offiziell bestätigt, dass 5-Stunden-Sitzungslimits werktags 13–19 Uhr GMT (≈15–21 Uhr deutsche Zeit) schneller aufgebraucht werden.';
+    } else if(isWeekday){
+      dot.classList.add('g');
+      label.textContent = 'Außerhalb der bestätigten Spitzenzeit';
+      sub.textContent = 'Kein offizieller Hinweis auf schnelleren Verbrauch zu dieser Uhrzeit — aber auch keine Garantie auf "besonders viel Kapazität".';
+    } else {
+      dot.classList.add('g');
+      label.textContent = 'Wochenende — keine bestätigte Regel';
+      sub.textContent = 'Die bekannte Spitzenzeiten-Regel gilt laut Anthropic nur für Werktage.';
+    }
+  }
+
+  const KEY = 'session_ampel_count';
+  let count = 0;
+  try { count = parseInt(localStorage.getItem(KEY) || '0', 10) || 0; } catch(e){}
+  const countEl = document.getElementById('count');
+  const lenNote = document.getElementById('lenNote');
+
+  function renderCount(){
+    countEl.textContent = count;
+    const newChatCard = document.getElementById('newChatCard');
+    if(count < 20){
+      lenNote.textContent = 'Noch überschaubar.';
+      newChatCard.style.display = 'none';
+    } else if(count < 60){
+      lenNote.textContent = 'Wird schon ein längeres Gespräch — jede Nachricht liest den ganzen bisherigen Verlauf mit.';
+      newChatCard.style.display = 'none';
+    } else {
+      lenNote.textContent = 'Sehr hoher Score — ein neuer Chat für ein neues Thema entlastet spürbar.';
+      newChatCard.style.display = 'block';
+    }
+  }
+
+  document.getElementById('incShort').addEventListener('click', () => {
+    count += 2;
+    try { localStorage.setItem(KEY, String(count)); } catch(e){}
+    renderCount();
+  });
+  document.getElementById('incLong').addEventListener('click', () => {
+    count += 8;
+    try { localStorage.setItem(KEY, String(count)); } catch(e){}
+    renderCount();
+  });
+  document.getElementById('reset').addEventListener('click', () => {
+    count = 0;
+    try { localStorage.setItem(KEY, '0'); } catch(e){}
+    renderCount();
+  });
+
+  updateTraffic();
+  renderCount();
+  setInterval(updateTraffic, 60000);
+</script>
+</body>
+</html>
