@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Session Traffic Light v4</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --ink:#e8e9ec; --sub:#8b909c; --line:#262b35;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  html{height:100%; scroll-padding-top:env(safe-area-inset-top,0px);}
+  body{
+    height:100%; margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    display:flex; justify-content:center;
+  }
+  main{width:100%; max-width:520px; padding:2rem 1.25rem 3rem;}
+  h1{font-size:1.4rem; font-weight:600; margin:0 0 .3rem;}
+  p.lead{color:var(--sub); font-size:.9rem; line-height:1.5; margin:0 0 1.3rem;}
+  .tabs{display:flex; gap:.4rem; margin-bottom:1rem; flex-wrap:wrap;}
+  .tab{
+    padding:.45rem .8rem; border-radius:20px; border:1px solid var(--line);
+    background:#1e222b; color:var(--sub); font-size:.82rem; cursor:pointer;
+  }
+  .tab.active{color:var(--ink); border-color:#3ecf8e; background:#1c2a24;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1.3rem; margin-bottom:1rem;}
+  .row{display:flex; align-items:center; gap:.9rem;}
+  .dot{width:16px; height:16px; border-radius:50%; flex-shrink:0;}
+  .g{background:#3ecf8e; box-shadow:0 0 12px #3ecf8e88;}
+  .y{background:#e8c547; box-shadow:0 0 12px #e8c54788;}
+  .r{background:#e2574c; box-shadow:0 0 12px #e2574c88;}
+  .n{background:#4a4f5a;}
+  .label{font-size:1.05rem; font-weight:600;}
+  .sub{color:var(--sub); font-size:.85rem; margin-top:.15rem;}
+  .badge{
+    display:inline-block; font-size:.7rem; padding:.15rem .5rem; border-radius:6px;
+    margin-left:.5rem; vertical-align:middle; font-weight:600;
+  }
+  .badge.confirmed{background:#1c3a2c; color:#3ecf8e;}
+  .badge.anecdotal{background:#3a3320; color:#e8c547;}
+  .badge.na{background:#2a2d34; color:#8b909c;}
+  .badge.other{background:#1c2e3a; color:#6ba9d9;}
+  .clock{font-size:.78rem; color:var(--sub); margin-top:.7rem; border-top:1px solid var(--line); padding-top:.7rem;}
+  .counter{display:flex; justify-content:space-between; align-items:center;}
+  .num{font-size:2.1rem; font-weight:700; font-variant-numeric:tabular-nums;}
+  .btns{display:flex; gap:.5rem;}
+  button{
+    padding:.55rem .9rem; border-radius:8px; border:1px solid var(--line);
+    background:#1e222b; color:var(--ink); font-size:.85rem; cursor:pointer;
+  }
+  button:hover{border-color:#3ecf8e;}
+  .disclaimer{
+    font-size:.78rem; color:var(--sub); line-height:1.6; border-left:2px solid var(--line);
+    padding-left:.8rem; margin-top:.9rem; display:none;
+  }
+  .disclaimer strong{color:var(--ink);}
+  .source-toggle{
+    background:none; border:none; color:#6b93c9; font-size:.78rem; padding:0;
+    cursor:pointer; text-decoration:underline; margin-top:.8rem;
+  }
+  .source-toggle:hover{color:#8bb4e8;}
+  .footnote{font-size:.72rem; color:#5a5f6a; text-align:center; margin-top:1.4rem;}
+</style>
+</head>
+<body>
+<main>
+  <h1>Session Traffic Light v4</h1>
+  <p class="lead">A rough rule of thumb for conversation length and time of day — not a real measurement. Pick your AI below.</p>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="card">
+    <div class="row">
+      <div class="dot" id="trafficDot"></div>
+      <div>
+        <div class="label" id="trafficLabel">–<span class="badge" id="trafficBadge"></span></div>
+        <div class="sub" id="trafficSub">–</div>
+      </div>
+    </div>
+    <div class="clock" id="clockLine">–</div>
+    <div id="leverBox" style="margin-top:.7rem; border-top:1px solid var(--line); padding-top:.7rem;">
+      <div style="font-size:.78rem; font-weight:600; color:var(--ink); margin-bottom:.2rem;" id="leverTitle">Your key lever:</div>
+      <div class="sub" id="leverText">–</div>
+    </div>
+    <button class="source-toggle" id="sourceToggle">Show source &amp; details ▾</button>
+    <div class="disclaimer" id="sourceNote"></div>
+  </div>
+
+  <div class="card">
+    <div class="counter">
+      <div>
+        <div class="label">Usage score this session</div>
+        <div class="sub">Rough weighting — long replies count more than short ones (short=2, long=8, arbitrary but consistent)</div>
+      </div>
+      <div class="num" id="count">0</div>
+    </div>
+    <div class="btns" style="margin-top:1rem; flex-wrap:wrap;">
+      <button id="incShort">–</button>
+      <button id="incLong">–</button>
+      <button id="reset">Reset</button>
+    </div>
+    <div class="sub" id="scoreRule" style="margin-top:.6rem;">–</div>
+    <div id="lenNote" style="margin-top:.8rem; padding-top:.7rem; border-top:1px solid var(--line); font-size:.85rem; font-weight:600;"></div>
+    <div class="sub" id="idleNote" style="margin-top:.4rem;"></div>
+  </div>
+
+  <div class="card" id="newChatCard" style="display:none; border-color:#e8c547;">
+    <div class="row">
+      <div class="dot y"></div>
+      <div>
+        <div class="label">Good moment for a fresh chat window</div>
+        <div class="sub">Long conversations get "costlier" per message, since the whole prior history is re-read each time. Starting a new topic in a fresh chat noticeably reduces that. You don't need to delete the old window — keeping it does no harm, it's just no longer actively re-read.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footnote">This tool only shows publicly known information — tap "Show source &amp; details" above for what each status is (or isn't) based on.</div>
+</main>
+
+<script>
+  // Per-provider config. "confidence" controls the badge and disclaimer tone.
+  const PROVIDERS = {
+    claude: {
+      name: 'Claude (Anthropic)',
+      confidence: 'confirmed',
+      lever: 'Time of day. Weekdays 13:00–19:00 GMT is the confirmed lever — same conversation costs more of your session limit in that window than outside it.',
+      scoreShort: '+ Short (1–2 sentences, quick fact or yes/no)',
+      scoreLong: '+ Long (multiple paragraphs, code, or a tool was used — search, artifact, file)',
+      scoreRule: 'Rule of thumb: if the reply took more than ~15 seconds to read, or Claude visibly searched / built something, count it as long — the whole conversation so far gets re-read on every turn.',
+      evaluate(now){
+        const utcH = now.getUTCHours(), utcDay = now.getUTCDay();
+        const isWeekday = utcDay >= 1 && utcDay <= 5;
+        const inPeak = isWeekday && utcH >= 13 && utcH < 19;
+        if(inPeak) return {dot:'r', label:'Confirmed peak time', sub:'Anthropic has officially confirmed that 5-hour session limits get used up faster on weekdays 13:00–19:00 GMT — that window is active right now, in your local time.'};
+        if(isWeekday) return {dot:'g', label:'Outside the confirmed peak window', sub:'No official indication of faster usage at this hour — but also no guarantee of "extra generous" capacity.'};
+        return {dot:'g', label:'Weekend — no confirmed rule', sub:'The known peak-time rule only applies to weekdays, per Anthropic.'};
+      },
+      source: 'Anthropic confirmed on March 26, 2026 (via a post by staff member Thariq Shihipar, not an official in-app announcement) that 5-hour session limits for Free/Pro/Max users get used up faster on weekdays 13:00–19:00 GMT. Weekly limits are unaffected. This is a specific, named policy — not a general "servers are busier" observation.'
+    },
+    chatgpt: {
+      name: 'ChatGPT (OpenAI)',
+      confidence: 'other',
+      lever: 'Which model & tier, not the clock. If you\'re Plus/Pro and hit your GPT-5.4 Thinking limit, it auto-falls back to GPT-5.4 mini instead of cutting you off — you keep working, just on a lighter model. Signing up for a brand-new $200 Pro plan may also be paused during a launch-driven demand spike (as it was from Sept 10, 2026), independent of time of day.',
+      scoreShort: '+ Instant / simple reply',
+      scoreLong: '+ Thinking mode / complex reasoning task',
+      scoreRule: 'Rule of thumb: Instant replies barely touch your limit. Switching to a Thinking or reasoning model, or a long back-and-forth, is what actually drains it here — not the time you use it.',
+      evaluate(){
+        return {dot:'n', label:'No time-of-day pattern (by design)', sub:'OpenAI has officially confirmed capacity measures — a model fallback when rate limits are hit, and a temporary pause on new $200 Pro sign-ups during a demand spike — but nothing tied to a specific time of day. The clock isn\'t the relevant factor here.'};
+      },
+      source: 'Confirmed by OpenAI directly: since March 18, 2026, GPT-5.4 mini automatically steps in as a fallback for GPT-5.4 Thinking once a paid user hits their rate limit, keeping reasoning access available (OpenAI release notes). Separately, on September 10, 2026, OpenAI paused new sign-ups and upgrades to its $200 ChatGPT Pro plan due to surging demand for its Astra model straining capacity (confirmed via OpenAI\'s help documentation and a post from product lead Thibault Sottiaux). Both are real, confirmed capacity responses — but event- or limit-triggered, not anchored to a recurring daily time window like Anthropic\'s.'
+    },
+    gemini: {
+      name: 'Gemini (Google)',
+      confidence: 'other',
+      lever: 'What you ask for, not when. A plain text question barely touches your quota. Media generation (image/video/music), Deep Research, the Pro model, and Extended Thinking are the expensive ones and will drain your 5-hour window fast, at any hour.',
+      scoreShort: '+ Plain text prompt',
+      scoreLong: '+ Media generation / Deep Research / Pro model / Extended Thinking',
+      scoreRule: 'Rule of thumb: a text question is cheap here regardless of length. Anything that generates an image, video, or uses Deep Research/Pro/Extended Thinking is what actually burns your quota — count those as long.',
+      evaluate(){
+        return {dot:'n', label:'No time-of-day pattern (by design)', sub:'Google confirmed a real system change in May 2026 — but it\'s based on prompt complexity and features, not time of day. Using it at 3am or 3pm makes no difference; what matters is what you ask it to do.'};
+      },
+      source: 'Confirmed: starting May 17, 2026, Google moved Gemini to compute-based usage limits that refresh every 5 hours until a weekly cap is hit. Usage is calculated from prompt complexity, features used (media generation, Deep Research, Pro model, Extended Thinking) and chat length — not the time of day. So unlike Anthropic\'s rule, there is no "peak window" for a clock-based indicator to show here; the real driver is what you\'re asking for, not when.'
+    },
+    meta: {
+      name: 'Meta AI',
+      confidence: 'other',
+      lever: 'Your plan tier, not the clock. Free hits limits soonest on heavy features (image/video, extended reasoning). Meta One Core ($7.99/mo) and Premium ($19.99/mo) raise those ceilings — the time you use it doesn\'t change anything.',
+      scoreShort: '+ Plain text chat',
+      scoreLong: '+ Image/video generation or extended reasoning',
+      scoreRule: 'Rule of thumb: plain chatting is basically free here. Generating images/videos or using heavier reasoning is what pushes free-tier users toward the limit fastest — count those as long.',
+      evaluate(){
+        return {dot:'n', label:'No time-of-day pattern (by design)', sub:'Meta confirmed paid tiers in September 2026 that unlock higher usage limits for compute-heavy features (image/video generation, extended reasoning). This is a limits-by-plan system, not a time-based one — the clock doesn\'t matter here either.'};
+      },
+      source: 'Confirmed: in September 2026, Meta introduced "Meta One" with paid tiers (Core $7.99/mo, Premium $19.99/mo) that raise usage limits for Meta AI\'s more compute-intensive features. The free tier remains available but hits limits sooner on heavy use. No official statement describes time-of-day peak-hour throttling comparable to Anthropic\'s — the limiting factor here is your plan and what you ask for, not when you ask.'
+    }
+  };
+
+  const BADGE_TEXT = {confirmed:'CONFIRMED', anecdotal:'UNCONFIRMED', na:'N/A', other:'CONFIRMED (DIFFERENT MODEL)'};
+  let current = 'claude';
+
+  function renderTabs(){
+    const tabs = document.getElementById('tabs');
+    tabs.innerHTML = '';
+    Object.keys(PROVIDERS).forEach(key => {
+      const b = document.createElement('button');
+      b.className = 'tab' + (key === current ? ' active' : '');
+      b.textContent = PROVIDERS[key].name;
+      b.addEventListener('click', () => { current = key; renderTabs(); updateTraffic(); });
+      tabs.appendChild(b);
+    });
+  }
+
+  function updateTraffic(){
+    const now = new Date();
+    const p = PROVIDERS[current];
+    const result = p.evaluate(now);
+    const dot = document.getElementById('trafficDot');
+    const label = document.getElementById('trafficLabel');
+    const sub = document.getElementById('trafficSub');
+    const badge = document.getElementById('trafficBadge');
+    const clockLine = document.getElementById('clockLine');
+    const sourceNote = document.getElementById('sourceNote');
+
+    dot.className = 'dot ' + result.dot;
+    label.childNodes[0].nodeValue = result.label;
+    sub.textContent = result.sub;
+    badge.textContent = BADGE_TEXT[p.confidence];
+    badge.className = 'badge ' + p.confidence;
+
+    const localStr = now.toLocaleString(undefined, { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+    const tzOffset = -now.getTimezoneOffset() / 60;
+    const tzStr = 'UTC' + (tzOffset >= 0 ? '+' : '') + tzOffset;
+    clockLine.textContent = 'Your local time: ' + localStr + ' (' + tzStr + ') — showing status for ' + p.name + '.';
+
+    document.getElementById('leverText').textContent = p.lever;
+    document.getElementById('incShort').textContent = p.scoreShort;
+    document.getElementById('incLong').textContent = p.scoreLong;
+    document.getElementById('scoreRule').textContent = p.scoreRule;
+
+    sourceNote.innerHTML = '<strong>Source (' + p.name + '):</strong> ' + p.source + ' This page has no access to your actual remaining quota, real server load, or latency data for any provider — it only shows what is or isn\'t publicly known.';
+
+    // Collapse the details box again whenever the provider changes, so switching
+    // tabs doesn't leave a long, expanded text block hanging around by default.
+    sourceNote.style.display = 'none';
+    document.getElementById('sourceToggle').textContent = 'Show source & details ▾';
+  }
+
+  document.getElementById('sourceToggle').addEventListener('click', () => {
+    const box = document.getElementById('sourceNote');
+    const btn = document.getElementById('sourceToggle');
+    const isOpen = box.style.display === 'block';
+    box.style.display = isOpen ? 'none' : 'block';
+    btn.textContent = isOpen ? 'Show source & details ▾' : 'Hide source & details ▴';
+  });
+
+  const KEY = 'session_ampel_count';
+  const LAST_KEY = 'session_ampel_last_click';
+  let count = 0;
+  let lastClick = Date.now();
+  try { count = parseInt(localStorage.getItem(KEY) || '0', 10) || 0; } catch(e){}
+  try { lastClick = parseInt(localStorage.getItem(LAST_KEY) || String(Date.now()), 10); } catch(e){}
+  const countEl = document.getElementById('count');
+  const lenNote = document.getElementById('lenNote');
+  const idleNote = document.getElementById('idleNote');
+
+  function renderCount(){
+    countEl.textContent = count;
+    const newChatCard = document.getElementById('newChatCard');
+    if(count < 20){
+      lenNote.textContent = 'Still manageable.';
+      lenNote.style.color = '#3ecf8e';
+      newChatCard.style.display = 'none';
+    } else if(count < 60){
+      lenNote.textContent = 'Getting to be a longer conversation — every message re-reads the whole history so far.';
+      lenNote.style.color = '#e8c547';
+      newChatCard.style.display = 'none';
+    } else {
+      lenNote.textContent = 'Very high score — a fresh chat for a new topic will noticeably help.';
+      lenNote.style.color = '#e2574c';
+      newChatCard.style.display = 'block';
+    }
+  }
+
+  function renderIdle(){
+    const minutes = Math.round((Date.now() - lastClick) / 60000);
+    idleNote.textContent = minutes >= 15 ? ("It's been " + minutes + " min since you last logged an exchange — the score may be understating actual usage.") : '';
+  }
+
+  function logClick(delta){
+    count += delta; lastClick = Date.now();
+    try { localStorage.setItem(KEY, String(count)); localStorage.setItem(LAST_KEY, String(lastClick)); } catch(e){}
+    renderCount(); renderIdle();
+  }
+
+  document.getElementById('incShort').addEventListener('click', () => logClick(2));
+  document.getElementById('incLong').addEventListener('click', () => logClick(8));
+  document.getElementById('reset').addEventListener('click', () => {
+    count = 0; lastClick = Date.now();
+    try { localStorage.setItem(KEY, '0'); localStorage.setItem(LAST_KEY, String(lastClick)); } catch(e){}
+    renderCount(); renderIdle();
+  });
+
+  renderTabs();
+  updateTraffic();
+  renderCount();
+  renderIdle();
+  setInterval(updateTraffic, 60000);
+  setInterval(renderIdle, 60000);
+</script>
+</body>
+</html>
